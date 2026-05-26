@@ -1,4 +1,4 @@
-# Echo
+# onepost
 
 Cross-post to LinkedIn (personal profile) and Telegram (channel) from one place.
 
@@ -20,13 +20,13 @@ cp .env.example .env
 
 # 3. Generate a Fernet encryption key (one-time; keep this safe)
 uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Paste into .env as ECHO_ENCRYPTION_KEY=...
+# Paste into .env as ONEPOST_ENCRYPTION_KEY=...
 
 # 4. Run database migrations
 uv run alembic upgrade head
 ```
 
-**Important:** `ECHO_ENCRYPTION_KEY` encrypts OAuth tokens. If you lose or change it, stored
+**Important:** `ONEPOST_ENCRYPTION_KEY` encrypts OAuth tokens. If you lose or change it, stored
 LinkedIn tokens become unreadable and you'll need to re-authorize. Back up `.env`.
 
 ## Run

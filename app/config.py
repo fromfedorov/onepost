@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     )
 
     app_base_url: str = "http://127.0.0.1:8000"
-    database_url: str = "sqlite+aiosqlite:///./data/echo.db"
+    database_url: str = "sqlite+aiosqlite:///./data/onepost.db"
 
-    encryption_key: str = Field(default="", alias="ECHO_ENCRYPTION_KEY")
+    encryption_key: str = Field(default="", alias="ONEPOST_ENCRYPTION_KEY")
 
     telegram_bot_token: str = ""
     telegram_channel_id: str = ""

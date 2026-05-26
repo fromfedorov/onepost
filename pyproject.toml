@@ -1,5 +1,5 @@
 [project]
-name = "echo"
+name = "onepost"
 version = "0.1.0"
 description = "Cross-post to LinkedIn and Telegram from one place"
 readme = "README.md"

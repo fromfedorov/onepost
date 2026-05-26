@@ -1,4 +1,4 @@
-# Echo — Архитектура MVP
+# onepost — Архитектура MVP
 
 Кросс-постинг в LinkedIn (личный профиль) и Telegram-канал из единой точки.
 Однопользовательский MVP. Локальный запуск сейчас, прицел на VPS в будущем.
@@ -260,14 +260,14 @@ class Publisher(Protocol):
 | `TELEGRAM_BOT_TOKEN` | `.env` | `.env` в `.gitignore`, не логируется |
 | `TELEGRAM_CHANNEL_ID` | `.env` | — |
 | `LINKEDIN_CLIENT_ID` / `CLIENT_SECRET` | `.env` | `.env` в `.gitignore` |
-| `ECHO_ENCRYPTION_KEY` | `.env` | 32-байтовый Fernet-ключ; генерируется на этапе 0 и больше не меняется (иначе токены расшифровать нельзя) |
-| LinkedIn access/refresh токены | таблица `oauth_tokens`, BLOB | Fernet поверх `ECHO_ENCRYPTION_KEY` |
+| `ONEPOST_ENCRYPTION_KEY` | `.env` | 32-байтовый Fernet-ключ; генерируется на этапе 0 и больше не меняется (иначе токены расшифровать нельзя) |
+| LinkedIn access/refresh токены | таблица `oauth_tokens`, BLOB | Fernet поверх `ONEPOST_ENCRYPTION_KEY` |
 
 ### Правила
 - Никаких токенов в коде, в логах, в shell history.
 - При логировании HTTP ответов LinkedIn — маскировать заголовок `Authorization` и поля `access_token`/`refresh_token`.
 - `.env.example` коммитится с пустыми значениями; `.env` — никогда.
-- При переезде на VPS — `ECHO_ENCRYPTION_KEY` берётся из секрет-менеджера (например, Doppler / 1Password / Fly secrets / Railway env), не из файла.
+- При переезде на VPS — `ONEPOST_ENCRYPTION_KEY` берётся из секрет-менеджера (например, Doppler / 1Password / Fly secrets / Railway env), не из файла.
 
 ### OAuth flow (LinkedIn)
 1. Пользователь жмёт «Connect LinkedIn» в UI.
@@ -424,6 +424,6 @@ onepost/
 │   ├── test_publication_service.py
 │   └── test_scheduler.py
 └── data/                       # gitignored: SQLite файл + медиа
-    ├── echo.db
+    ├── onepost.db
     └── media/
 ```

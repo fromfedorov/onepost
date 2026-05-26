@@ -1,4 +1,4 @@
-# Echo — План разработки MVP
+# onepost — План разработки MVP
 
 Источник архитектурных решений: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
@@ -35,7 +35,7 @@
 4. `app/main.py`: создать FastAPI app, `GET /healthz` возвращает `{"ok": true}`.
 5. `app/config.py`: pydantic-settings с полями `database_url`, `telegram_bot_token`, `telegram_channel_id`, `linkedin_client_id`, `linkedin_client_secret`, `linkedin_redirect_uri`, `encryption_key`, `app_base_url`.
 6. `.env.example` со всеми ключами и пустыми значениями.
-7. Сгенерировать Fernet-ключ, сохранить в локальном `.env` (`ECHO_ENCRYPTION_KEY=...`). В команду в README.
+7. Сгенерировать Fernet-ключ, сохранить в локальном `.env` (`ONEPOST_ENCRYPTION_KEY=...`). В команду в README.
 8. `app/storage/db.py`: SQLAlchemy engine и `async_session`.
 9. Alembic init, первая пустая миграция.
 10. `tests/conftest.py` + один тест `test_healthz` через `httpx.AsyncClient`.
@@ -43,7 +43,7 @@
 
 ### DoD
 - `uvicorn app.main:app --reload` поднимается, `GET /healthz` → `{"ok": true}`.
-- `alembic upgrade head` создаёт `data/echo.db` без ошибок.
+- `alembic upgrade head` создаёт `data/onepost.db` без ошибок.
 - `pytest` зелёный (1 тест).
 - `git log` содержит начальный коммит.
 
@@ -196,6 +196,7 @@
 3. `app/scheduler/runner.py`: APScheduler `AsyncIOScheduler`, поднимается в FastAPI lifespan. Один job каждые 30с: выбирает `PlatformPost`-ы со `status='scheduled'` и `next_attempt_at <= now()` (или `scheduled_at <= now()` если попыток ещё не было), атомарно переводит в `queued`, вызывает publication service для каждого.
 4. UI: в списке постов — отдельная плашка «Scheduled for …» с возможностью отменить (`status → cancelled`).
 5. Конкурентность: атомарная смена `scheduled → queued` через `UPDATE ... WHERE status='scheduled'` с проверкой `rowcount=1`. Защита от двойного запуска scheduler-а (он один на процесс).
+
 6. Тесты:
    - Создание поста с `scheduled_at` в будущем → не публикуется немедленно.
    - Тик scheduler-а при `scheduled_at <= now` → публикация запускается.
