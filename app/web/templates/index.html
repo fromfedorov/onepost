@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section>
+    <h2>Compose</h2>
+    <form action="/posts" method="post" enctype="multipart/form-data">
+        <label for="text">Text</label>
+        <textarea name="text" id="text" rows="6" placeholder="What's on your mind?" required></textarea>
+
+        <label for="image">Image (optional)</label>
+        <input type="file" name="image" id="image" accept="image/jpeg,image/png,image/webp">
+
+        <button type="submit">Publish now</button>
+    </form>
+</section>
+
+<section>
+    <h2>Recent posts</h2>
+    {% if posts %}
+        <div class="posts">
+        {% for post in posts %}
+            {% include "partials/post_row.html" %}
+        {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted">No posts yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

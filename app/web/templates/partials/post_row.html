@@ -1,0 +1,32 @@
+{% set needs_poll = post.platform_posts | selectattr("status", "in", active_statuses) | list | length > 0 %}
+<article
+    id="post-{{ post.id }}"
+    class="post-row"
+    {% if needs_poll %}
+    hx-get="/posts/{{ post.id }}/status"
+    hx-trigger="every 2s"
+    hx-swap="outerHTML"
+    {% endif %}
+>
+    <div class="post-content">
+        <p class="post-text">{{ post.content }}</p>
+        {% if post.image %}
+            <p class="muted">📎 {{ post.image.local_path }}</p>
+        {% endif %}
+        <small class="muted">{{ post.created_at.strftime("%Y-%m-%d %H:%M") }} UTC</small>
+    </div>
+    <div class="post-platforms">
+        {% for pp in post.platform_posts %}
+            <div class="platform-status status-{{ pp.status.value }}">
+                <strong>{{ pp.platform.value }}</strong>
+                <span class="badge">{{ pp.status.value }}</span>
+                {% if pp.external_url %}
+                    <a href="{{ pp.external_url }}" target="_blank" rel="noopener">view ↗</a>
+                {% endif %}
+                {% if pp.last_error %}
+                    <small class="error">{{ pp.last_error }}</small>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</article>
