@@ -23,13 +23,14 @@
 
 ## 2. Выбор стека
 
-### Решение: Python 3.11+ / FastAPI / HTMX / SQLite / SQLAlchemy + Alembic
+### Решение: Python 3.11+ / FastAPI (JSON API) + React 18 / Vite / TypeScript / Tailwind + shadcn/ui
 
 | Слой | Выбор | Почему |
 |---|---|---|
-| Язык | Python 3.11+ | Предпочтение пользователя; зрелые HTTP-клиенты; быстрый прототип. |
-| Web | FastAPI | Минимум boilerplate, async-готов для httpx, Pydantic-валидация из коробки. |
-| Frontend | Jinja2 (SSR) + HTMX + ванильный CSS (опц. Pico.css/Simple.css) | См. §2.1 ниже. Нет npm, нет сборки, нет SPA-фреймворка. |
+| Язык бэка | Python 3.11+ | Предпочтение пользователя; зрелые HTTP-клиенты; быстрый прототип. |
+| Backend | FastAPI (JSON API) | Минимум boilerplate, async-готов для httpx, Pydantic-валидация. Отдаёт только JSON; HTML не рендерит. |
+| Frontend | React 18 + Vite + TypeScript | SPA-однуэкранник в `frontend/`. См. §2.1. |
+| UI-kit | Tailwind CSS + shadcn/ui + lucide-react | Минимализм, dark/light темы из коробки. |
 | ORM / миграции | SQLAlchemy 2.x + Alembic | Стандарт; даёт возможность безболезненно перейти SQLite → Postgres при переезде на VPS. |
 | БД | SQLite (файл) | Один пользователь, локально. Схема пишется так, чтобы быть совместимой с Postgres. |
 | HTTP-клиент | httpx (async) | Параллельные вызовы LinkedIn/Telegram, тайм-ауты, ретраи. |
@@ -41,39 +42,48 @@
 
 ### 2.1 Frontend подробнее
 
-В MVP фронта как отдельной кодовой базы НЕТ. UI рендерится сервером и обновляется частичными HTML-фрагментами.
+Frontend — отдельный SPA в `frontend/`, использует JSON API бэкенда. Monorepo: один git-репозиторий, два независимых проекта рядом.
 
-- **Jinja2** — серверный рендеринг страниц. Шаблоны в `app/web/templates/`. FastAPI отдаёт готовый HTML, не JSON.
-- **HTMX** (~14 КБ, один `<script>` с CDN или в `app/web/static/`):
-  - `hx-post="/posts"` — отправка compose-формы без перезагрузки.
-  - `hx-get="/posts/{id}/status" hx-trigger="every 2s"` — polling статуса публикации, пока `publishing`/`queued`. Останавливаем `hx-trigger="every 2s [done]"` через ответный HTML без триггера.
-  - `hx-swap` — точечная замена кусков DOM серверными partials (`templates/partials/platform_status.html`, `post_row.html`).
-  - Загрузка файла — обычный `<form enctype="multipart/form-data">` с `hx-post`.
-- **CSS** — ванильный + одна из classless библиотек (Pico.css / Simple.css) одним `<link>`. Без Tailwind, без PostCSS.
-- **JS** — свой не пишем. Если понадобится мелочь (счётчик символов в textarea) — пара строк инлайн.
+- **Vite + React 18 + TypeScript** — dev-сервер на `:5173`, `vite.config.ts` проксирует `/api/*` → `http://127.0.0.1:8000`. Прод-сборка кладёт статику в `frontend/dist`, FastAPI её отдаёт (StaticFiles + SPA fallback).
+- **Tailwind CSS + shadcn/ui** — компоненты `Button`, `Textarea`, `Switch`, `Card`, `Sheet`, `Dialog`, `Toast`, `Skeleton`. Темы: light + dark через `class="dark"` на `<html>`.
+- **lucide-react** — иконки.
+- **State** — `useState` на уровне экрана; глобальный store не нужен (один экран). Mock-API в `src/lib/api.ts` совпадает по типам с реальным JSON, чтобы замена `fetch` → real была заменой одной строки на функцию.
 
-**Почему не React/Vue/Svelte:**
-- Один пользователь, ~3 страницы, ~1 форма — SPA это паразитная сложность.
-- Бэкенд и фронт в одном процессе, в одном репозитории, без отдельной сборки.
-- HTMX покрывает 100% нужной интерактивности (polling, partial updates, форма с файлом).
-- Если потом захочется отдельный SPA — JSON API уже есть в FastAPI; HTMX-роуты просто отдают `text/html` поверх той же логики, можно сосуществовать.
-
-**Структура `app/web/`:**
+**Структура `frontend/`:**
 ```
-app/web/
-├── routes.py
-├── templates/
-│   ├── base.html               # общий layout (header, nav, footer)
-│   ├── compose.html            # GET /
-│   ├── posts_list.html         # GET /posts
-│   ├── settings.html           # GET /settings (подключения)
-│   └── partials/
-│       ├── platform_status.html  # фрагмент для GET /posts/{id}/status
-│       └── post_row.html         # строка в списке постов
-└── static/
-    ├── htmx.min.js
-    └── styles.css
+frontend/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── tailwind.config.ts
+├── postcss.config.cjs
+├── index.html
+├── components.json              # shadcn config
+└── src/
+    ├── main.tsx
+    ├── App.tsx                  # один экран, композирует всё
+    ├── index.css                # tailwind directives + темы
+    ├── lib/
+    │   ├── api.ts               # реальные вызовы JSON-эндпоинтов
+    │   ├── mockApi.ts           # моки для dev до подключения бэка
+    │   └── types.ts             # Post, PlatformPost, Status, Platform
+    └── components/
+        ├── ui/                  # сгенерированные shadcn-компоненты
+        ├── PostComposer.tsx
+        ├── PlatformToggle.tsx
+        ├── PostPreview.tsx      # LinkedIn + Telegram карточки
+        ├── PublishStatus.tsx    # статусы публикации с retry
+        ├── OverridesAccordion.tsx
+        ├── ScheduleSheet.tsx
+        ├── ConnectionsCard.tsx  # LinkedIn OAuth / Telegram-handle
+        └── History.tsx          # последние посты со статусами
 ```
+
+**Почему не HTMX (раньше было выбрано HTMX, развернулись на React):**
+- В compose-форме хватает локального React-state, чтобы делать живой preview и счётчик символов без round-trip — на HTMX это unnecessary trip.
+- shadcn/ui даёт готовую тёмную тему и аккуратные компоненты, под HTMX пришлось бы писать руками.
+- Per-platform overrides + schedule sheet + history — несколько связанных состояний, на React они композируются естественнее, чем серверные partials.
+- Цена: отдельная сборка, npm, ~30 МБ node_modules. Для MVP принято.
 
 ### Альтернативы, которые рассматривались
 
@@ -81,19 +91,25 @@ app/web/
 - **Go (chi / echo)** — плюс: быстрый бинарь, дешёвый деплой. Минус: больше boilerplate для HTTP/JSON-структур LinkedIn, дольше прототипировать.
 - **Django** — плюс: батарейки (admin, миграции, auth). Минус: тяжёлый под одного пользователя, async-стек у LinkedIn/Telegram идиоматичнее на FastAPI.
 - **Flask** — плюс: проще FastAPI. Минус: нет встроенной валидации, async — через костыли.
-- **HTMX vs React/SPA** — HTMX даёт ровно столько UI, сколько нужно, без отдельной сборки. SPA — оверкилл для одной формы и таблицы статусов.
+- **HTMX vs React/SPA** — изначально выбрали HTMX («один экран, нет npm»), реализовали и работало. Развернулись на React: shadcn/ui экономит много времени на dark mode + accessibility, а композиция overrides/schedule/history оказалась чище в React-компонентах, чем в Jinja-partials.
 - **APScheduler vs Celery+Redis vs cron** — для MVP нужна ровно одна задача с `scheduled_at`. APScheduler в том же процессе достаточно; Celery — лишняя инфраструктура; cron — менее гибко и плохо переживает миграцию состояния.
 
 ## 3. Компоненты системы
 
 ```
+   ┌──────────────────────────┐
+   │   React SPA (frontend/)  │   dev: vite :5173 → proxy /api
+   │   Vite + TS + shadcn/ui  │   prod: served as static from FastAPI
+   └────────────┬─────────────┘
+                │ fetch /api/*
+                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        FastAPI process                          │
 │                                                                 │
 │  ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐   │
-│  │  Web layer   │───▶│  Publication     │───▶│  Publisher   │   │
-│  │  (HTMX UI    │    │  Service         │    │  Registry    │   │
-│  │   + JSON)    │    │  (orchestrator)  │    │              │   │
+│  │  API layer   │───▶│  Publication     │───▶│  Publisher   │   │
+│  │  (JSON only) │    │  Service         │    │  Registry    │   │
+│  │              │    │  (orchestrator)  │    │              │   │
 │  └──────────────┘    └────────┬─────────┘    └──────┬───────┘   │
 │         │                     │                     │           │
 │         │                     ▼                     ▼           │
@@ -123,10 +139,21 @@ app/web/
               └───────────────────────────────┘
 ```
 
-### 3.1 Web layer (`app/web`)
-- Роуты для compose-формы, списка постов, страницы статусов, OAuth-callback.
-- HTMX-фрагменты для динамического обновления статусов без full page reload.
+### 3.1 API layer (`app/api`)
+- Только JSON-эндпоинты под префиксом `/api`. Никакого Jinja / HTML.
+- Pydantic-схемы для request/response в `app/api/schemas.py`.
+- Эндпоинты MVP:
+  - `POST /api/posts` (multipart: text, image?, scheduled_at?, overrides?, platforms[]) → создаёт Post + PlatformPosts, запускает публикацию.
+  - `GET /api/posts` → список последних 50 постов с их PP.
+  - `GET /api/posts/{id}` → один пост + PP.
+  - `POST /api/posts/{id}/retry/{platform}` → пере-запустить публикацию для одной платформы.
+  - `DELETE /api/posts/{id}` → отменить scheduled-пост (если ещё не ушёл).
+  - `GET /api/connections` → статус LinkedIn (connected/not) и Telegram (валиден ли токен).
+  - `GET /api/oauth/linkedin/start` → URL для редиректа в LinkedIn.
+  - `GET /api/oauth/linkedin/callback` → обмен code, сохранение токенов, редирект на frontend.
+- CORS в dev: разрешён `http://localhost:5173`. В проде frontend подаётся тем же FastAPI — CORS не нужен.
 - В MVP — никакой auth: слушает только `127.0.0.1`. При переезде на VPS — basic auth / cookie session (см. §11).
+- Прод-режим: FastAPI монтирует `frontend/dist` как статику с SPA-fallback (любой не-`/api` путь → `index.html`).
 
 ### 3.2 Publication Service (`app/services/publication.py`)
 - Оркестратор. Принимает `Post`, разворачивает в N `PlatformPost` (по одной на платформу), вызывает соответствующие `Publisher`-ы параллельно через `asyncio.gather(return_exceptions=True)`.
@@ -270,12 +297,13 @@ class Publisher(Protocol):
 - При переезде на VPS — `ONEPOST_ENCRYPTION_KEY` берётся из секрет-менеджера (например, Doppler / 1Password / Fly secrets / Railway env), не из файла.
 
 ### OAuth flow (LinkedIn)
-1. Пользователь жмёт «Connect LinkedIn» в UI.
-2. Редирект на `https://www.linkedin.com/oauth/v2/authorization?...&redirect_uri=http://127.0.0.1:8000/oauth/linkedin/callback`.
-3. LinkedIn возвращает `code` на callback.
-4. Сервер обменивает `code` на access + refresh токены (`POST /oauth/v2/accessToken`).
+1. Пользователь жмёт «Connect LinkedIn» в React UI.
+2. Frontend делает `GET /api/oauth/linkedin/start` → бэк возвращает URL → frontend редиректит браузер.
+3. LinkedIn возвращает `code` на `/api/oauth/linkedin/callback`.
+4. Бэк обменивает `code` на access + refresh токены (`POST /oauth/v2/accessToken`).
 5. Токены шифруются и пишутся в `oauth_tokens`.
-6. Перед каждой публикацией `LinkedInPublisher` запрашивает у `TokenStore` валидный access-токен; если близок к истечению — TokenStore сам делает refresh.
+6. Бэк редиректит браузер обратно на frontend (`/` или `/settings`).
+7. Перед каждой публикацией `LinkedInPublisher` запрашивает у `TokenStore` валидный access-токен; если близок к истечению — TokenStore сам делает refresh.
 
 ## 7. Поток данных
 
@@ -284,17 +312,19 @@ class Publisher(Protocol):
 ```mermaid
 sequenceDiagram
     actor U as User
-    participant W as Web (HTMX)
+    participant FE as React SPA
+    participant API as FastAPI /api
     participant P as Publication Service
     participant TG as TelegramPublisher
     participant LI as LinkedInPublisher
     participant DB as Storage
 
-    U->>W: POST /compose (text, image, "publish now")
-    W->>DB: create Post + 2 PlatformPosts (status=queued)
-    W-->>U: 200 + HTMX partial (статус "publishing...")
-    par
-        W->>P: publish(post_id)
+    U->>FE: Click "Publish"
+    FE->>API: POST /api/posts (multipart)
+    API->>DB: create Post + 2 PlatformPosts (status=queued)
+    API-->>FE: 202 { post: {...} }
+    par background task
+        API->>P: publish(post_id)
         P->>TG: publish(req)
         TG-->>P: PublishResult or PublishError
         P->>DB: update telegram PlatformPost
@@ -303,9 +333,11 @@ sequenceDiagram
         LI-->>P: PublishResult or PublishError
         P->>DB: update linkedin PlatformPost
     end
-    U->>W: GET /posts/{id}/status (HTMX poll)
-    W->>DB: read PlatformPosts
-    W-->>U: HTML с реальными статусами
+    loop every 1.5s while any PP active
+        FE->>API: GET /api/posts/{id}
+        API->>DB: read post + PPs
+        API-->>FE: { post, platform_posts: [...] }
+    end
 ```
 
 ### Запланированная публикация
@@ -313,13 +345,15 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor U as User
-    participant W as Web
+    participant FE as React SPA
+    participant API as FastAPI /api
     participant S as Scheduler (APScheduler)
     participant P as Publication Service
     participant DB as Storage
 
-    U->>W: POST /compose (text, scheduled_at=2026-05-27T10:00)
-    W->>DB: create Post(state=scheduled) + PlatformPosts(status=scheduled)
+    U->>FE: pick scheduled_at
+    FE->>API: POST /api/posts (scheduled_at=...)
+    API->>DB: create Post(state=scheduled) + PlatformPosts(status=scheduled)
     loop каждые 30с
         S->>DB: SELECT * FROM platform_posts WHERE status='scheduled' AND scheduled_at <= now()
         S->>DB: UPDATE ... SET status='queued'
@@ -376,7 +410,6 @@ sequenceDiagram
 - Аналитика (просмотры, реакции, клики).
 - Inbox: ответы и комментарии.
 - AI-генерация / переписывание контента под платформу.
-- Превью «как пост будет выглядеть» в стиле LinkedIn/Telegram — отложено.
 - Rollback при частичном падении публикации.
 - Деплой на VPS, CI/CD, мониторинг, alerts — отдельный пост-MVP трек.
 - Тесты против реального LinkedIn (только против фейков; реальная проверка — ручная при апруве приложения).
@@ -388,41 +421,52 @@ onepost/
 ├── ARCHITECTURE.md
 ├── DEV_PLAN.md
 ├── README.md
-├── pyproject.toml
+├── pyproject.toml              # backend deps (uv)
 ├── .env.example
 ├── .gitignore
 ├── alembic.ini
 ├── migrations/
-├── app/
+├── app/                        # FastAPI JSON API
 │   ├── __init__.py
-│   ├── main.py                 # FastAPI app, lifespan, scheduler bootstrap
+│   ├── main.py                 # FastAPI app, lifespan, scheduler bootstrap, SPA mount
 │   ├── config.py               # pydantic-settings
 │   ├── deps.py                 # DI helpers
-│   ├── web/
+│   ├── api/                    # JSON routes (replaces app/web)
 │   │   ├── routes.py
-│   │   ├── templates/
-│   │   └── static/
+│   │   └── schemas.py          # Pydantic request/response
 │   ├── services/
 │   │   └── publication.py
 │   ├── publishers/
-│   │   ├── base.py             # Publisher protocol + dataclasses
+│   │   ├── base.py
 │   │   ├── telegram.py
 │   │   └── linkedin.py
 │   ├── auth/
 │   │   ├── linkedin_oauth.py
 │   │   └── token_store.py
 │   ├── storage/
-│   │   ├── db.py               # engine, session
+│   │   ├── db.py
 │   │   ├── models.py
-│   │   └── media.py            # MediaStorage
+│   │   └── media.py
 │   └── scheduler/
 │       └── runner.py
-├── tests/
-│   ├── conftest.py
-│   ├── test_telegram_publisher.py
-│   ├── test_linkedin_publisher.py
-│   ├── test_publication_service.py
-│   └── test_scheduler.py
+├── tests/                      # pytest, backend
+├── frontend/                   # React SPA
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── tailwind.config.ts
+│   ├── components.json
+│   ├── index.html
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   ├── lib/
+│   │   │   ├── api.ts
+│   │   │   ├── mockApi.ts
+│   │   │   └── types.ts
+│   │   └── components/
+│   └── dist/                   # gitignored: prod build
 └── data/                       # gitignored: SQLite файл + медиа
     ├── onepost.db
     └── media/

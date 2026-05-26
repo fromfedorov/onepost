@@ -6,18 +6,21 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.routes import router as api_router
 from app.config import get_settings
 from app.publishers.registry import PublisherRegistry
 from app.publishers.telegram import TelegramPublisher
 from app.storage.media import MediaStorage
-from app.web.routes import router as web_router
 
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "web" / "static"
-MEDIA_DIR = Path(__file__).parent.parent / "data" / "media"
+PROJECT_ROOT = Path(__file__).parent.parent
+MEDIA_DIR = PROJECT_ROOT / "data" / "media"
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -45,10 +48,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="onepost", version="0.1.0", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.include_router(web_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router)
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, bool]:
     return {"ok": True}
+
+
+# Serve React build in production. In dev, Vite runs separately on :5173.
+if FRONTEND_DIST.exists():
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    async def spa_fallback(spa_path: str) -> FileResponse:
+        index = FRONTEND_DIST / "index.html"
+        return FileResponse(index)

@@ -69,6 +69,19 @@ class PublicationService:
             post.state = PostState.failed
         await self._session.commit()
 
+    async def publish_platform_post(self, pp_id: str) -> None:
+        pp = await self._session.get(PlatformPost, pp_id)
+        if pp is None:
+            logger.warning("publish_platform_post: %s not found", pp_id)
+            return
+        post = await self._session.get(Post, pp.post_id)
+        if post is None:
+            return
+        image_path = (
+            str(self._media.absolute_path(post.image.local_path)) if post.image else None
+        )
+        await self._publish_one(pp, post.content, image_path)
+
     async def _publish_one(
         self, pp: PlatformPost, default_text: str, image_path: str | None
     ) -> None:

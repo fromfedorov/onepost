@@ -54,7 +54,9 @@
 
 ---
 
-## Этап 1 — Telegram publisher и минимальный compose-flow (L)
+## Этап 1 — Telegram publisher и минимальный compose-flow (L) ✅
+
+Сделано на HTMX (см. ARCHITECTURE.md, до пивота). В Stage 1.5 UI перевели на React.
 
 **Цель:** Можно открыть форму, набрать текст (опционально с картинкой), нажать «Опубликовать» — пост появляется в Telegram-канале. Статус виден в UI.
 
@@ -96,6 +98,50 @@
 
 ---
 
+## Этап 1.5 — Пивот фронта на React SPA (L)
+
+**Цель:** Заменить HTMX UI на React + Vite + TS + Tailwind + shadcn/ui. Бэкенд начинает отдавать только JSON. UI закладывается под полный MVP-функционал (composer + preview + overrides + schedule + connections + history), даже если часть бэка ещё mock.
+
+### Задачи
+1. **Бэкенд → JSON:**
+   - Удалить `app/web/templates/` + Jinja-роуты + статику.
+   - `app/api/routes.py` под префиксом `/api`:
+     - `POST /api/posts` (multipart: `text`, `image?`, `scheduled_at?`, `platforms`, `text_override_*?`).
+     - `GET /api/posts`, `GET /api/posts/{id}`.
+     - `POST /api/posts/{id}/retry/{platform}`.
+     - `DELETE /api/posts/{id}` (отмена scheduled).
+     - `GET /api/connections` — Telegram (через `getMe`), LinkedIn (заглушка `connected=false`, реализация в Stage 2).
+     - `GET /api/media/{id}` — отдача загруженных изображений (для preview).
+   - `app/api/schemas.py` — Pydantic-схемы.
+   - `CORSMiddleware` для `http://localhost:5173` в dev.
+   - В прод-режиме монтируется `frontend/dist` как статика + SPA fallback на `index.html`.
+2. **Тесты бэка:** переписать `tests/test_routes.py` под JSON, добавить тесты на retry endpoint + connections.
+3. **Frontend scaffold:**
+   - `frontend/` через `npm create vite@latest -- --template react-ts`.
+   - `vite.config.ts` с `server.proxy = { '/api': 'http://127.0.0.1:8000' }`.
+   - Tailwind init + shadcn/ui init. Темы light/dark через `next-themes` или ручной toggle.
+4. **Frontend код:**
+   - `src/lib/types.ts` — `Post`, `PlatformPost`, `Platform`, `PlatformPostStatus`, `Connection`.
+   - `src/lib/mockApi.ts` — моки с искусственной задержкой и dev-контролем (success/error toggle, не random).
+   - `src/lib/api.ts` — реальные `fetch /api/*`.
+   - Компоненты: `App`, `PostComposer`, `PlatformToggle`, `PostPreview` (LinkedIn + Telegram), `PublishStatus`, `OverridesAccordion`, `ScheduleSheet`, `ConnectionsCard`, `History`, `ThemeToggle`.
+5. **Wire-up:** переключить импорт в `App.tsx` с `mockApi` на `api`.
+
+### DoD
+- `uv run uvicorn app.main:app` + `npm --prefix frontend run dev`: React UI на `:5173` шлёт `/api/posts`, тестовый пост уходит в Telegram-канал.
+- Backend-тесты зелёные.
+- `npm --prefix frontend run build` собирается без ошибок.
+- `npm --prefix frontend run lint`/`tsc --noEmit` без ошибок.
+
+### Можно делать локально без внешних зависимостей? ✅ полностью.
+
+### Риски
+- Тонкости shadcn CLI (path aliases `@/*` в `tsconfig.json` + `vite.config.ts`). Mitigation: следовать официальной инструкции «shadcn/Vite» шаг в шаг.
+- Дрейф контракта между mockApi и реальным API. Mitigation: оба используют один и тот же `types.ts`; функциональная сигнатура совпадает.
+- LinkedIn `Connect` пока не работает (Stage 2). UI показывает «Coming in Stage 2» в `ConnectionsCard`.
+
+---
+
 ## Этап 2 — LinkedIn OAuth + posting только текста (L)
 
 **Цель:** Можно подключить свой LinkedIn-аккаунт через UI, и при публикации поста (без картинки) он появляется в личном профиле.
@@ -109,10 +155,11 @@
    - `authorize_url()` — формирует URL `/oauth/v2/authorization` с `scope=w_member_social`, `state` (CSRF).
    - `exchange_code(code)` — `POST /oauth/v2/accessToken`, парсит access/refresh/expires_in.
    - `refresh(refresh_token)` — аналогично.
-4. Web routes:
-   - `GET /settings` — страница «Подключения»: показывает статус Telegram (по `getMe`) и LinkedIn (есть ли валидный токен + имя аккаунта).
-   - `GET /oauth/linkedin/start` → редирект на `authorize_url`, сохранение `state` в session/cookie.
-   - `GET /oauth/linkedin/callback` → проверка state, обмен code, сохранение токенов, редирект обратно на `/settings`.
+4. API routes (JSON):
+   - `GET /api/connections` теперь возвращает `linkedin: { connected, member_name? }`.
+   - `GET /api/oauth/linkedin/start` → `{ authorize_url }`.
+   - `GET /api/oauth/linkedin/callback` → обмен code, сохранение токенов, **302 на frontend** (`/?connected=linkedin`).
+   - В `ConnectionsCard` (Stage 1.5) кнопка «Connect LinkedIn» делает `window.location.assign(authorize_url)`.
 5. `LinkedInPublisher`:
    - `platform_id = "linkedin"`.
    - `publish(req)` для текста: `POST /rest/posts` с `author=urn:li:person:{member_urn}`, заголовки `LinkedIn-Version`, `X-Restli-Protocol-Version: 2.0.0`. Парсит `external_id` из заголовка `x-restli-id`/тела.
@@ -126,7 +173,7 @@
 8. README: как создать LinkedIn-приложение, какие redirect URL заводить, как пройти первый OAuth.
 
 ### DoD
-- В `/settings` можно нажать «Connect LinkedIn», пройти OAuth, увидеть «Connected as <имя>».
+- В карточке Connections (UI Stage 1.5) можно нажать «Connect LinkedIn», пройти OAuth, увидеть «Connected as <имя>».
 - При публикации текстового поста через основную форму он реально появляется в моём LinkedIn-профиле И в Telegram-канале.
 - Статусы обеих платформ независимо отображаются в UI.
 - Перезапуск приложения через сутки не требует повторного OAuth (токен жив 60 дней, refresh работает).
@@ -165,16 +212,17 @@
 
 ---
 
-## Этап 4 — Per-platform overrides и UX-полировка compose-формы (M)
+## Этап 4 — Per-platform overrides (S, бэк-только)
 
-**Цель:** Можно задать общий текст и опционально переопределить его для каждой платформы.
+UI готов в Stage 1.5 (`OverridesAccordion`). Тут — только бэк-валидация и тесты, если в 1.5 это не было полностью покрыто.
+
+**Цель:** Бэк корректно принимает и применяет per-platform overrides.
 
 ### Задачи
-1. UI: под основным текстовым полем — две раскрывающиеся секции «Telegram (override)» и «LinkedIn (override)». По умолчанию свёрнуты и пустые → используется основной текст.
-2. `POST /posts` принимает `text_override_telegram` и `text_override_linkedin`, пишет их в `PlatformPost.text_override`.
-3. `PublicationService` при формировании `PublishRequest` использует `text_override or post.content`.
-4. Подсказки: счётчик символов (Telegram caption 1024 / message 4096; LinkedIn ~3000).
-5. Тесты: override применяется только к нужной платформе; пустой override = базовый текст.
+1. `POST /api/posts` принимает `text_override_telegram` и `text_override_linkedin`.
+2. `PublicationService` уже умеет (`text_override or post.content`) — убедиться тестом.
+3. Бэк-валидация: длина overrides под лимиты платформ (LinkedIn ~3000, Telegram 4096).
+4. Тесты: override применяется только к нужной платформе; пустой override = базовый текст.
 
 ### DoD
 - Можно опубликовать пост, в котором Telegram-версия содержит хештеги, а LinkedIn-версия — без, проверено вручную.
@@ -186,15 +234,17 @@
 
 ---
 
-## Этап 5 — Запланированная публикация (L)
+## Этап 5 — Запланированная публикация (M)
+
+UI Sheet «Отложить» сделан в Stage 1.5. Здесь только бэк + scheduler.
 
 **Цель:** Можно выбрать дату/время — пост уходит без участия пользователя.
 
 ### Задачи
-1. UI: переключатель «Опубликовать сейчас» / «Запланировать на …», datetime-picker (HTML5 `datetime-local`).
-2. `POST /posts` пишет `scheduled_at` и ставит `PlatformPost.status='scheduled'`.
+1. UI готов: `ScheduleSheet` с datetime-picker, отправка `scheduled_at` в `POST /api/posts`.
+2. `POST /api/posts` пишет `scheduled_at` и ставит `PlatformPost.status='scheduled'`.
 3. `app/scheduler/runner.py`: APScheduler `AsyncIOScheduler`, поднимается в FastAPI lifespan. Один job каждые 30с: выбирает `PlatformPost`-ы со `status='scheduled'` и `next_attempt_at <= now()` (или `scheduled_at <= now()` если попыток ещё не было), атомарно переводит в `queued`, вызывает publication service для каждого.
-4. UI: в списке постов — отдельная плашка «Scheduled for …» с возможностью отменить (`status → cancelled`).
+4. UI: в `History` (Stage 1.5) уже есть отображение `scheduled_at` и кнопка «Cancel» → вызывает `DELETE /api/posts/{id}`.
 5. Конкурентность: атомарная смена `scheduled → queued` через `UPDATE ... WHERE status='scheduled'` с проверкой `rowcount=1`. Защита от двойного запуска scheduler-а (он один на процесс).
 
 6. Тесты:
@@ -223,8 +273,8 @@
 1. `PublicationService`: при `PublishError(transient=True)` — увеличить `attempts`, посчитать `next_attempt_at = now + min(60 * 2^attempts, 30*60) + jitter`, поставить `status='scheduled'` (тот же ретрай-механизм, что и для запланированных). После 5 попыток → `permanently_failed`.
 2. Учёт `retry_after` от Telegram/LinkedIn (если есть в ответе) — использовать как минимум для `next_attempt_at`.
 3. Scheduler job (из этапа 5) уже подхватит PP с `scheduled` + `next_attempt_at <= now` — изменений в нём почти не нужно.
-4. UI: история попыток разворачивается под статусом PP («Attempt 2 of 5 — failed: 429, next retry at …»). Источник — `audit_log` (создать миграцию для таблицы) или собрать из `attempts`/`last_error`.
-5. UI: кнопка «Retry now» на `permanently_failed` PP — сбрасывает `attempts` и `next_attempt_at = now`.
+4. UI: `PublishStatus` (Stage 1.5) уже разворачивает строку попыток («Attempt 2 of 5 — failed: 429, next retry at …»). Источник — `attempts`/`last_error`/`next_attempt_at` из `GET /api/posts/{id}`.
+5. UI: кнопка «Retry now» на `permanently_failed` PP — вызывает `POST /api/posts/{id}/retry/{platform}` (endpoint появился в 1.5; здесь — реальная логика сброса `attempts` и `next_attempt_at = now`).
 6. Тесты:
    - Mock publisher, который бросает transient 2 раза, потом успешный → итог `succeeded`, `attempts=3`.
    - 5 transient подряд → `permanently_failed`.
@@ -249,8 +299,8 @@
 1. README: установка, OAuth-setup для обеих платформ, типичные ошибки.
 2. Структурированные логи (`python-json-logger`), маскирование `Authorization`-заголовка и токенов.
 3. Sanity-проверки на старте: проверить наличие всех env-ключей, валидность Telegram токена, существование `ECHO_ENCRYPTION_KEY`; падать с понятной ошибкой, если что-то не так.
-4. Простой banner в UI: «LinkedIn refresh token истекает через X дней» (когда останется <14 дней до `refresh_expires_at`).
-5. Дамп истории публикаций в JSON (`GET /export`) — для бэкапа на случай потери `.db`.
+4. Простой banner в React UI: «LinkedIn refresh token истекает через X дней» (когда останется <14 дней до `refresh_expires_at`).
+5. Дамп истории публикаций в JSON (`GET /api/export`) — для бэкапа на случай потери `.db`.
 6. Smoke-тест: один пост-пайплайн от формы до базы, прогоняется в CI (если CI заведём; иначе руками перед коммитом).
 
 ### DoD
@@ -289,11 +339,12 @@
 
 ## Что строить первым — резюме
 
-1. **EXT-1 (Telegram bot)** — 5 минут, можно прямо сейчас.
+1. **EXT-1 (Telegram bot)** ✅ — готов.
 2. **EXT-2 (LinkedIn app)** — отправить заявку в Developer Portal как можно раньше, чтобы апрув не блокировал.
-3. **Этап 0** — каркас.
-4. **Этап 1** — Telegram до конца, чтобы был осязаемый результат уже на 2-й день.
-5. **Этап 2 (LinkedIn OAuth + текст)** — как только EXT-2 одобрен.
-6. **Этап 3 → 4 → 5 → 6 → 7** — далее по порядку.
+3. **Этап 0** ✅ — каркас.
+4. **Этап 1** ✅ — Telegram publisher + HTMX UI (заменён в 1.5).
+5. **Этап 1.5** — пивот на React SPA. UI закладывается полностью; backend-моки заменяются по мере прохождения следующих этапов.
+6. **Этап 2 (LinkedIn OAuth + текст)** — как только EXT-2 одобрен.
+7. **Этап 3 → 4 → 5 → 6 → 7** — далее по порядку.
 
-Параллелизация: пока ждём апрув LinkedIn, можно делать этапы 4 (UI overrides) и 5 (планировщик) против существующего Telegram publisher-а — они от LinkedIn не зависят.
+Параллелизация: пока ждём апрув LinkedIn, можно делать этап 5 (планировщик) и этап 6 (авторетраи) против Telegram publisher — они от LinkedIn не зависят. UI для этих фич готов с 1.5.
