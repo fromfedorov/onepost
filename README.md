@@ -6,10 +6,12 @@ Single-user MVP. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [DEV_PLAN.md](./DE
 
 ## Stack
 
-- Python 3.11+, FastAPI, HTMX, SQLAlchemy 2.x + Alembic, SQLite (PG-compatible schema).
-- Managed with [uv](https://docs.astral.sh/uv/).
+- Backend: Python 3.11+, FastAPI (JSON API), SQLAlchemy 2.x + Alembic, SQLite. Managed with [uv](https://docs.astral.sh/uv/).
+- Frontend: React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui. Lives in `frontend/`.
 
 ## Setup
+
+### Backend
 
 ```bash
 # 1. Create venv and install deps
@@ -26,21 +28,49 @@ uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_
 uv run alembic upgrade head
 ```
 
-**Important:** `ONEPOST_ENCRYPTION_KEY` encrypts OAuth tokens. If you lose or change it, stored
+`ONEPOST_ENCRYPTION_KEY` encrypts OAuth tokens. If you lose or change it, stored
 LinkedIn tokens become unreadable and you'll need to re-authorize. Back up `.env`.
 
-## Run
+### Frontend
 
 ```bash
-uv run uvicorn app.main:app --reload
+cd frontend
+npm install
 ```
 
-The app listens on http://127.0.0.1:8000. Health check: http://127.0.0.1:8000/healthz
+Requires Node.js 20.19+ or 22.12+ (Vite 7).
+
+## Run (development)
+
+Two processes, two terminals:
+
+```bash
+# Terminal 1: backend
+uv run uvicorn app.main:app --reload
+# Listens on http://127.0.0.1:8000
+
+# Terminal 2: frontend
+npm --prefix frontend run dev
+# Opens http://localhost:5173, proxies /api/* to the backend
+```
+
+Open http://localhost:5173 in a browser.
+
+## Build (production)
+
+```bash
+npm --prefix frontend run build
+uv run uvicorn app.main:app
+```
+
+When `frontend/dist` exists, FastAPI serves it as the SPA at `/`.
 
 ## Tests
 
 ```bash
-uv run pytest
+uv run pytest                      # backend
+npm --prefix frontend run lint     # frontend lint
+npm --prefix frontend run build    # frontend type-check + build
 ```
 
 ## Database migrations

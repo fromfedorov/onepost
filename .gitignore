@@ -39,3 +39,9 @@ data/
 
 # uv
 .uv/
+
+# Frontend (most patterns from frontend/.gitignore, duplicated for safety)
+frontend/node_modules/
+frontend/dist/
+frontend/*.log
+
